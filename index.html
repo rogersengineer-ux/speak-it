@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speak It — Text-to-Speech Reader</title>
+    <style>
+        /* --- Design System & Variables (Sage/Seafoam Theme) --- */
+        :root {
+            --bg-app: #f4f7f5;
+            --bg-card: #ffffff;
+            --text-main: #2d3732;
+            --text-muted: #607167;
+            --accent: #4a7c59;
+            --accent-hover: #3b6346;
+            --accent-light: #e8f0ec;
+            --border: #d1dcd6;
+            --focus-ring: #68a379;
+            --shadow: 0 4px 12px rgba(45, 55, 50, 0.05);
+            --radius: 12px;
+            --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-text: "Georgia", Cambria, "Times New Roman", Times, serif;
+        }
+
+        [data-theme="dark"] {
+            --bg-app: #121815;
+            --bg-card: #1a231f;
+            --text-main: #e1e7e4;
+            --text-muted: #94a69c;
+            --accent: #68a379;
+            --accent-hover: #7fba91;
+            --accent-light: #23322a;
+            --border: #2d3a33;
+            --focus-ring: #88c299;
+            --shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        /* --- Base Reset & Layout --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-ui);
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        main {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            margin-top: 1rem;
+            margin-bottom: 2rem;
+            transition: max-width 0.3s ease;
+        }
+
+        /* --- Header Styles --- */
+        header {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            transition: max-width 0.3s ease;
+        }
+
+        .brand h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .theme-toggle, .mode-toggle {
+            background: none;
+            border: 2px solid var(--border);
+            padding: 0.5rem 0.75rem;
+            border-radius: 20px;
+            cursor: pointer;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle {
+            border-radius: 50%;
+            padding: 0.5rem;
+        }
+
+        .theme-toggle:hover, .mode-toggle:hover {
+            border-color: var(--accent);
+            background-color: var(--accent-light);
+        }
+
+        /* --- Card Containers --- */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        /* --- Text Input Section --- */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .textarea-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        textarea {
+            width: 100%;
+            height: 280px;
+            font-family: var(--font-text);
+            font-size: 1.2rem;
+            line-height: 1.6;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background-color: var(--bg-card);
+            color: var(--text-main);
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--focus-ring);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+
+        /* Standard Mode Highlight Layer */
+        .highlight-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            font-family: var(--font-text);
+            font-size: 1.2rem;
+            line-height: 1.6;
+            padding: 1rem;
+            border: 1px solid transparent;
+            background-color: var(--bg-card);
+            color: var(--text-main);
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            pointer-events: none;
+            display: none;
+            border-radius: var(--radius);
+        }
+
+        body.is-playing:not(.mode-reading) .highlight-overlay {
+            display: block;
+            pointer-events: auto;
+        }
+        body.is-playing:not(.mode-reading) textarea {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Typography Highlights */
+        .highlight-word {
+            background-color: rgba(74, 124, 89, 0.25);
+            border-radius: 3px;
+            transition: background-color 0.1s ease;
+        }
+        [data-theme="dark"] .highlight-word {
+            background-color: rgba(104, 163, 121, 0.4);
+        }
+
+        /* --- Metadata & Counter Row --- */
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .stats {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .action-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .text-btn {
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: underline;
+        }
+
+        .text-btn:hover {
+            color: var(--accent-hover);
+        }
+
+        /* --- Controls Section --- */
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.25rem;
+        }
+
+        @media (min-width: 640px) {
+            .controls-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .full-width-control {
+                grid-column: span 2;
+            }
+        }
+
+        .control-block {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .voice-selector-container {
+            display: flex;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        select {
+            flex: 1;
+            padding: 0.75rem;
+            font-size: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background-color: var(--bg-card);
+            color: var(--text-main);
+            outline: none;
+            cursor: pointer;
+        }
+
+        select:focus {
+            border-color: var(--focus-ring);
+        }
+
+        .fav-toggle-btn {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: 8px;
+            padding: 0 0.75rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .fav-toggle-btn.active {
+            color: #d4af37;
+            border-color: #d4af37;
+            background-color: rgba(212, 175, 55, 0.08);
+        }
+
+        /* --- Sliders --- */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent);
+            height: 6px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .slider-val {
+            font-size: 0.875rem;
+            font-variant-numeric: tabular-nums;
+            min-width: 2.5rem;
+            text-align: right;
+            color: var(--text-muted);
+        }
+
+        /* --- Preset Buttons --- */
+        .preset-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .preset-btn {
+            flex: 1;
+            background-color: var(--bg-app);
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            font-size: 0.875rem;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-main);
+            transition: all 0.15s ease;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent);
+            background-color: var(--accent-light);
+        }
+
+        .preset-btn.active {
+            background-color: var(--accent);
+            color: #ffffff;
+            border-color: var(--accent);
+        }
+
+        /* --- Primary Action Row --- */
+        .playback-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 0.875rem 1.2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--accent);
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-app);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--accent-light);
+            border-color: var(--accent);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: var(--border);
+            background-color: var(--bg-app);
+            color: var(--text-muted);
+        }
+
+        body.is-playing:not(.is-paused-state) .btn-primary {
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 0 0 rgba(74, 124, 89, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(74, 124, 89, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 124, 89, 0); }
+        }
+
+        /* --- Info Warning Box --- */
+        .info-box {
+            display: none;
+            background-color: #fff9e6;
+            border: 1px solid #ffe0b2;
+            color: #b78103;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        [data-theme="dark"] .info-box {
+            background-color: #2c2212;
+            border-color: #4d3819;
+            color: #ffd073;
+        }
+
+        /* --- Full-Page Reading Mode Layer UX --- */
+        .reader-view-container {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            height: calc(100vh - 120px);
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .reader-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 3rem 2.5rem;
+            font-family: var(--font-text);
+            font-size: 1.6rem;
+            line-height: 1.8;
+            color: var(--text-main);
+            scroll-behavior: smooth;
+        }
+
+        /* Segment Node Rules inside Reading Canvas */
+        .reader-sentence {
+            opacity: 0.45;
+            transition: opacity 0.2s ease, background-color 0.2s ease;
+            padding: 0 4px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .reader-sentence:hover {
+            opacity: 0.8;
+            background-color: var(--accent-light);
+        }
+
+        .reader-sentence.is-current {
+            opacity: 1 !important;
+            font-weight: 500;
+            background-color: rgba(74, 124, 89, 0.12);
+        }
+        
+        [data-theme="dark"] .reader-sentence.is-current {
+            background-color: rgba(104, 163, 121, 0.18);
+        }
+
+        .reader-sentence.is-current .reader-word-highlight {
+            background-color: rgba(74, 124, 89, 0.25);
+            border-radius: 3px;
+        }
+
+        [data-theme="dark"] .reader-sentence.is-current .reader-word-highlight {
+            background-color: rgba(104, 163, 121, 0.45);
+        }
+
+        /* Unspoken text remains clear before reading initializes */
+        body:not(.is-playing) .reader-sentence {
+            opacity: 1;
+        }
+
+        .reader-controls-bar {
+            background-color: var(--bg-app);
+            border-top: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .reader-left-ctrls {
+            display: flex;
+            gap: 0.75rem;
+            flex: 1;
+            min-width: 280px;
+        }
+
+        .reader-right-ctrls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            min-width: 240px;
+        }
+
+        /* Body state overrides */
+        body.mode-reading main, body.mode-reading header { max-width: 900px; }
+        body.mode-reading .standard-view-node { display: none !important; }
+        body.mode-reading .reader-view-container { display: flex !important; }
+
+        *:focus-visible {
+            outline: 3px solid var(--focus-ring);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+                Speak It
+            </h1>
+        </div>
+        <div class="header-actions">
+            <button class="mode-toggle" id="modeToggle" aria-label="Toggle Reading View Canvas">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h20M2 9h20M2 15h20M2 21h20"></path></svg>
+                <span id="modeToggleText">Reading Mode</span>
+            </button>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle Theme">
+                <svg id="themeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div id="systemWarning" class="info-box" role="alert"></div>
+
+        <!-- Standard Workplace Workspace -->
+        <section class="card input-group standard-view-node">
+            <div class="textarea-wrapper">
+                <textarea id="textInput" spellcheck="true" autocomplete="off"></textarea>
+                <div id="highlightOverlay" class="highlight-overlay"></div>
+            </div>
+            
+            <div class="meta-row">
+                <div class="stats">
+                    <span id="charCount">0 characters</span>
+                    <span>•</span>
+                    <span id="wordCount">0 words</span>
+                    <span>•</span>
+                    <span id="readingTime">Est: 0m 0s reading time</span>
+                </div>
+                <div class="action-links">
+                    <button class="text-btn" id="loadSampleBtn">Load Sample</button>
+                    <button class="text-btn" id="clearBtn">Clear Text</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Engine Panels configurations -->
+        <section class="card controls-grid standard-view-node">
+            <div class="control-block full-width-control">
+                <label>Voice & Dialect Language Profile</label>
+                <div class="voice-selector-container">
+                    <select id="voiceSelect" aria-label="Voice Select Menu">
+                        <option value="">Locating system vocal profiles...</option>
+                    </select>
+                    <button class="fav-toggle-btn" id="favVoiceBtn" aria-label="Toggle voice favorite">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="control-block">
+                <label>Reading Speed Presets</label>
+                <div class="preset-row">
+                    <button class="preset-btn" data-rate="0.75">Slow</button>
+                    <button class="preset-btn active" data-rate="1.0">Normal</button>
+                    <button class="preset-btn" data-rate="1.4">Fast</button>
+                    <button class="preset-btn" data-rate="1.8">Rapid</button>
+                </div>
+            </div>
+
+            <div class="control-block">
+                <label for="rateSlider">Fine Speed Multiplier</label>
+                <div class="slider-container">
+                    <input type="range" id="rateSlider" min="0.5" max="2.0" step="0.05" value="1.0">
+                    <span class="slider-val" id="rateVal">1.0x</span>
+                </div>
+            </div>
+
+            <div class="control-block">
+                <label for="pitchSlider">Vocal Pitch Spectrum</label>
+                <div class="slider-container">
+                    <input type="range" id="pitchSlider" min="0.5" max="1.5" step="0.05" value="1.0">
+                    <span class="slider-val" id="pitchVal">1.0x</span>
+                </div>
+            </div>
+
+            <div class="control-block">
+                <label for="volumeSlider">Audio Gain Level</label>
+                <div class="slider-container">
+                    <input type="range" id="volumeSlider" min="0.0" max="1.0" step="0.05" value="1.0">
+                    <span class="slider-val" id="volumeVal">100%</span>
+                </div>
+            </div>
+
+            <div class="playback-actions full-width-control">
+                <button class="btn btn-primary" id="playPauseBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span class="play-btn-text-node">Speak It</span>
+                </button>
+                <button class="btn btn-secondary" id="stopBtn" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+                    <span>Stop</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Full-Page Focused Reading Mode Viewport Layout Canvas -->
+        <section class="reader-view-container" id="readerViewContainer">
+            <div class="reader-body" id="readerBody" role="document"></div>
+            <div class="reader-controls-bar">
+                <div class="reader-left-ctrls">
+                    <button class="btn btn-primary" id="readerPlayPauseBtn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        <span class="play-btn-text-node">Speak It</span>
+                    </button>
+                    <button class="btn btn-secondary" id="readerStopBtn" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+                        <span>Stop</span>
+                    </button>
+                </div>
+                <div class="reader-right-ctrls">
+                    <label for="readerRateSlider" style="white-space: nowrap;">Speed</label>
+                    <input type="range" id="readerRateSlider" min="0.5" max="2.0" step="0.05" value="1.0">
+                    <span class="slider-val" id="readerRateVal">1.0x</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /* --- Application Engine Variables & Setup State --- */
+        const STORAGE_KEY_SETTINGS = 'speakit:settings';
+        const STORAGE_KEY_TEXT = 'speakit:saved_text';
+        const STORAGE_KEY_FAVS = 'speakit:favorite_voices';
+        const DEFAULT_TEXT = `Welcome to Speak It. This is a refined client-side text-to-speech reader constructed directly inside a single file. 
+
+Paste your research, documents, or articles here. It automatically bypasses character length constraints using advanced multi-sentence sequence streaming. It supports deep background styling, variable vocal adjustments, automatic persistence, and local synchronization. Try switching speeds, adjusting the pitch, or changing the system accent model configuration below.`;
+
+        let state = {
+            currentTheme: 'light',
+            viewMode: 'standard', 
+            settings: { voiceName: '', rate: 1.0, pitch: 1.0, volume: 1.0 },
+            favoriteVoices: [],
+            speechSegments: [],
+            currentSegmentIndex: 0,
+            isPlaying: false,
+            isPaused: false,
+            globalCharOffset: 0
+        };
+
+        const nodes = {
+            body: document.body,
+            themeToggle: document.getElementById('themeToggle'),
+            themeIcon: document.getElementById('themeIcon'),
+            modeToggle: document.getElementById('modeToggle'),
+            modeToggleText: document.getElementById('modeToggleText'),
+            systemWarning: document.getElementById('systemWarning'),
+            textInput: document.getElementById('textInput'),
+            highlightOverlay: document.getElementById('highlightOverlay'),
+            readerViewContainer: document.getElementById('readerViewContainer'),
+            readerBody: document.getElementById('readerBody'),
+            charCount: document.getElementById('charCount'),
+            wordCount: document.getElementById('wordCount'),
+            readingTime: document.getElementById('readingTime'),
+            loadSampleBtn: document.getElementById('loadSampleBtn'),
+            clearBtn: document.getElementById('clearBtn'),
+            voiceSelect: document.getElementById('voiceSelect'),
+            favVoiceBtn: document.getElementById('favVoiceBtn'),
+            rateSlider: document.getElementById('rateSlider'),
+            rateVal: document.getElementById('rateVal'),
+            pitchSlider: document.getElementById('pitchSlider'),
+            pitchVal: document.getElementById('pitchVal'),
+            volumeSlider: document.getElementById('volumeSlider'),
+            volumeVal: document.getElementById('volumeVal'),
+            presetBtns: document.querySelectorAll('.preset-btn'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            stopBtn: document.getElementById('stopBtn'),
+            readerPlayPauseBtn: document.getElementById('readerPlayPauseBtn'),
+            readerStopBtn: document.getElementById('readerStopBtn'),
+            readerRateSlider: document.getElementById('readerRateSlider'),
+            readerRateVal: document.getElementById('readerRateVal'),
+            allPlayBtnTexts: document.querySelectorAll('.play-btn-text-node')
+        };
+
+        /* --- Theme Framework Management --- */
+        function initTheme() {
+            const savedTheme = localStorage.getItem('speakit:theme') || 
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            setTheme(savedTheme);
+        }
+
+        function setTheme(theme) {
+            state.currentTheme = theme;
+            nodes.body.setAttribute('data-theme', theme);
+            localStorage.setItem('speakit:theme', theme);
+            nodes.themeIcon.innerHTML = theme === 'dark' 
+                ? `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>` 
+                : `<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>`;
+        }
+        nodes.themeToggle.addEventListener('click', () => setTheme(state.currentTheme === 'light' ? 'dark' : 'light'));
+
+        /* --- Mode Swapping View Transformation Logic --- */
+        nodes.modeToggle.addEventListener('click', () => {
+            const fullText = nodes.textInput.value;
+            if (state.viewMode === 'standard') {
+                state.viewMode = 'reading';
+                nodes.body.classList.add('mode-reading');
+                nodes.modeToggleText.textContent = "Editor Mode";
+                nodes.modeToggle.querySelector('svg').innerHTML = `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline>`;
+                
+                // Build segmented nodes to allow pinpoint highlight alignments
+                buildReaderDOMStructure(fullText);
+                if (state.isPlaying) {
+                    syncActiveReadingHighlightState();
+                }
+            } else {
+                state.viewMode = 'standard';
+                nodes.body.classList.remove('mode-reading');
+                nodes.modeToggleText.textContent = "Reading Mode";
+                nodes.modeToggle.querySelector('svg').innerHTML = `<path d="M2 3h20M2 9h20M2 15h20M2 21h20"></path>`;
+                
+                if (state.isPlaying) {
+                    buildStandardHighlightBaseDOM(fullText);
+                }
+            }
+        });
+
+        /* --- Serialization Initialization Settings --- */
+        function loadSettingsAndText() {
+            try {
+                const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+                if (storedSettings) state.settings = { ...state.settings, ...JSON.parse(storedSettings) };
+                const storedFavs = localStorage.getItem(STORAGE_KEY_FAVS);
+                if (storedFavs) state.favoriteVoices = JSON.parse(storedFavs);
+            } catch (e) { console.error(e); }
+
+            nodes.textInput.value = localStorage.getItem(STORAGE_KEY_TEXT) ?? DEFAULT_TEXT;
+            syncSpeedSliders(state.settings.rate);
+            nodes.pitchSlider.value = state.settings.pitch;
+            nodes.pitchVal.textContent = `${state.settings.pitch}x`;
+            nodes.volumeSlider.value = state.settings.volume;
+            nodes.volumeVal.textContent = `${Math.round(state.settings.volume * 100)}%`;
+
+            updatePresetBtnActiveState();
+            calculateTextStats();
+        }
+
+        function saveSettings() { localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(state.settings)); }
+        function syncSpeedSliders(val) {
+            state.settings.rate = val;
+            nodes.rateSlider.value = val;
+            nodes.rateVal.textContent = `${val.toFixed(2)}x`;
+            nodes.readerRateSlider.value = val;
+            nodes.readerRateVal.textContent = `${val.toFixed(2)}x`;
+        }
+
+        function calculateTextStats() {
+            const rawText = nodes.textInput.value;
+            localStorage.setItem(STORAGE_KEY_TEXT, rawText);
+            const wordsArray = rawText.trim().split(/\s+/).filter(w => w.length > 0);
+            nodes.charCount.textContent = `${rawText.length.toLocaleString()} character${rawText.length === 1 ? '' : 's'}`;
+            nodes.wordCount.textContent = `${wordsArray.length.toLocaleString()} word${wordsArray.length === 1 ? '' : 's'}`;
+            const totalSeconds = Math.round((wordsArray.length / (150 * state.settings.rate)) * 60);
+            nodes.readingTime.textContent = `Est: ${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s reading time`;
+        }
+        nodes.textInput.addEventListener('input', calculateTextStats);
+
+        /* --- Audio Vocal Profiles Architecture --- */
+        let voicesList = [];
+        function populateVoiceProfiles() {
+            if (typeof speechSynthesis === 'undefined') return;
+            voicesList = window.speechSynthesis.getVoices();
+            if (voicesList.length === 0) {
+                nodes.voiceSelect.innerHTML = '<option value="">No local platform voices discovered.</option>';
+                return;
+            }
+            nodes.systemWarning.style.display = 'none';
+
+            const groupedVoices = {};
+            const favoriteGroup = [];
+
+            voicesList.forEach(voice => {
+                const isFav = state.favoriteVoices.includes(voice.name);
+                const langName = new Intl.DisplayNames(['en'], { type: 'language' }).of(voice.lang.split(/[-_]/)[0]) || voice.lang;
+                const regionName = voice.lang.includes('-') || voice.lang.includes('_') ? new Intl.DisplayNames(['en'], { type: 'region' }).of(voice.lang.split(/[-_]/)[1]) || '' : '';
+                const groupLabel = regionName ? `${langName} (${regionName})` : langName;
+                const voiceData = { voice, displayName: `${voice.name} (${voice.lang})` };
+
+                if (isFav) favoriteGroup.push(voiceData);
+                if (!groupedVoices[groupLabel]) groupedVoices[groupLabel] = [];
+                groupedVoices[groupLabel].push(voiceData);
+            });
+
+            nodes.voiceSelect.innerHTML = '';
+            if (favoriteGroup.length > 0) {
+                const fGroup = document.createElement('optgroup'); fGroup.label = "★ Starred Profiles";
+                favoriteGroup.forEach(vd => {
+                    const opt = document.createElement('option'); opt.value = vd.voice.name; opt.textContent = `★ ${vd.displayName}`; fGroup.appendChild(opt);
+                });
+                nodes.voiceSelect.appendChild(fGroup);
+            }
+
+            Object.keys(groupedVoices).sort().forEach(gName => {
+                const group = document.createElement('optgroup'); group.label = gName;
+                groupedVoices[gName].sort((a,b)=>a.voice.name.localeCompare(b.voice.name)).forEach(vd => {
+                    const opt = document.createElement('option'); opt.value = vd.voice.name; opt.textContent = vd.displayName; group.appendChild(opt);
+                });
+                nodes.voiceSelect.appendChild(group);
+            });
+
+            if (state.settings.voiceName) nodes.voiceSelect.value = state.settings.voiceName;
+            if (!nodes.voiceSelect.value && nodes.voiceSelect.options.length > 0) {
+                nodes.voiceSelect.selectedIndex = 0; state.settings.voiceName = nodes.voiceSelect.value; saveSettings();
+            }
+            updateFavoriteStarUIState();
+        }
+
+        if (typeof window.speechSynthesis !== 'undefined') {
+            window.speechSynthesis.onvoiceschanged = populateVoiceProfiles; populateVoiceProfiles();
+        }
+
+        function updateFavoriteStarUIState() {
+            nodes.favVoiceBtn.classList.toggle('active', state.favoriteVoices.includes(nodes.voiceSelect.value));
+        }
+        nodes.voiceSelect.addEventListener('change', () => {
+            state.settings.voiceName = nodes.voiceSelect.value; updateFavoriteStarUIState(); saveSettings();
+        });
+        nodes.favVoiceBtn.addEventListener('click', () => {
+            const v = nodes.voiceSelect.value; if (!v) return;
+            const idx = state.favoriteVoices.indexOf(v);
+            idx > -1 ? state.favoriteVoices.splice(idx, 1) : state.favoriteVoices.push(v);
+            localStorage.setItem(STORAGE_KEY_FAVS, JSON.stringify(state.favoriteVoices)); populateVoiceProfiles();
+        });
+
+        /* --- Audio Param Event Pipeline Sliders --- */
+        [nodes.rateSlider, nodes.readerRateSlider].forEach(slider => {
+            slider.addEventListener('input', (e) => {
+                syncSpeedSliders(parseFloat(e.target.value)); updatePresetBtnActiveState(); calculateTextStats(); saveSettings();
+            });
+        });
+        nodes.pitchSlider.addEventListener('input', (e) => { state.settings.pitch = parseFloat(e.target.value); nodes.pitchVal.textContent = `${e.target.value}x`; saveSettings(); });
+        nodes.volumeSlider.addEventListener('input', (e) => { state.settings.volume = parseFloat(e.target.value); nodes.volumeVal.textContent = `${Math.round(e.target.value * 100)}%`; saveSettings(); });
+        nodes.presetBtns.forEach(btn => btn.addEventListener('click', () => { syncSpeedSliders(parseFloat(btn.getAttribute('data-rate'))); updatePresetBtnActiveState(); calculateTextStats(); saveSettings(); }));
+        function updatePresetBtnActiveState() { nodes.presetBtns.forEach(b => b.classList.toggle('active', parseFloat(b.getAttribute('data-rate')) === state.settings.rate)); }
+
+        /* --- Audio Text Splitting Context Engine --- */
+        function splitTextIntoSentences(text) {
+            if (!text.trim()) return [];
+            const sentenceRegex = /[^.!?\s][^.!?]*(?:[.!?](?!['"]?\s|$)[^.!?]*)*[.!?]?['"]?(?=\s|$)/g;
+            let matches = text.match(sentenceRegex) || [text];
+            let segments = [], indexTracker = 0;
+            matches.forEach(segmentStr => {
+                const offset = text.indexOf(segmentStr, indexTracker);
+                if (offset !== -1) {
+                    indexTracker = offset + segmentStr.length;
+                    segments.push({ text: segmentStr, startCharIndex: offset, endCharIndex: indexTracker });
+                }
+            });
+            return segments;
+        }
+
+        /* --- Dynamic Canvas Layout DOM Composers --- */
+        function buildStandardHighlightBaseDOM(text) {
+            nodes.highlightOverlay.textContent = text;
+            nodes.highlightOverlay.scrollTop = nodes.textInput.scrollTop;
+        }
+
+        function buildReaderDOMStructure(text) {
+            nodes.readerBody.innerHTML = '';
+            state.speechSegments = splitTextIntoSentences(text);
+            
+            if (state.speechSegments.length === 0) {
+                nodes.readerBody.textContent = "No content available.";
+                return;
+            }
+
+            state.speechSegments.forEach((segment, idx) => {
+                const span = document.createElement('span');
+                span.className = 'reader-sentence';
+                span.id = `r-seg-${idx}`;
+                span.textContent = segment.text + " ";
+                // Let the reader click directly on a sentence to skip right to it
+                span.addEventListener('click', () => {
+                    if (state.isPlaying) {
+                        state.currentSegmentIndex = idx;
+                        window.speechSynthesis.cancel();
+                        speakSegmentSequence();
+                    }
+                });
+                nodes.readerBody.appendChild(span);
+            });
+        }
+
+        /* --- Core Audio Loop Execution Runtime Context --- */
+        function executeSpeechPipeline() {
+            window.speechSynthesis.cancel();
+            const fullText = nodes.textInput.value;
+            
+            if (state.viewMode !== 'reading') {
+                state.speechSegments = splitTextIntoSentences(fullText);
+            } else if (nodes.readerBody.children.length === 0) {
+                buildReaderDOMStructure(fullText);
+            }
+
+            if (state.speechSegments.length === 0) return;
+
+            state.isPlaying = true; state.isPaused = false;
+            if (!state.isPaused) state.currentSegmentIndex = state.currentSegmentIndex || 0;
+            
+            nodes.body.classList.add('is-playing');
+            nodes.body.classList.remove('is-paused-state');
+            nodes.stopBtn.disabled = nodes.readerStopBtn.disabled = false;
+            setPlayButtonState('pause');
+
+            if (state.viewMode === 'standard') buildStandardHighlightBaseDOM(fullText);
+            speakSegmentSequence();
+        }
+
+        function speakSegmentSequence() {
+            if (!state.isPlaying || state.isPaused) return;
+            if (state.currentSegmentIndex >= state.speechSegments.length) { stopSpeech(); return; }
+
+            const activeSeg = state.speechSegments[state.currentSegmentIndex];
+            state.globalCharOffset = activeSeg.startCharIndex;
+
+            if (state.viewMode === 'reading') syncActiveReadingHighlightState();
+
+            const utterance = new SpeechSynthesisUtterance(activeSeg.text);
+            const voiceProfile = voicesList.find(v => v.name === state.settings.voiceName);
+            if (voiceProfile) utterance.voice = voiceProfile;
+            
+            utterance.rate = state.settings.rate;
+            utterance.pitch = state.settings.pitch;
+            utterance.volume = state.settings.volume;
+
+            utterance.onboundary = (event) => {
+                if (state.isPaused) return;
+                if (event.name === 'word') {
+                    const localAbsoluteIdx = state.globalCharOffset + event.charIndex;
+                    if (state.viewMode === 'reading') {
+                        highlightWordInsideActiveSentence(event.charIndex, event.charLength || 0);
+                    } else {
+                        highlightWordIndexStandardMode(localAbsoluteIdx, event.charLength || 0);
+                    }
+                }
+            };
+
+            utterance.onend = () => {
+                if (!state.isPaused && state.isPlaying) {
+                    state.currentSegmentIndex++;
+                    speakSegmentSequence();
+                }
+            };
+
+            utterance.onerror = (e) => {
+                if (e.error !== 'interrupted' && !state.isPaused) stopSpeech();
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        /* --- Granular In-Sentence Highlighting Engine --- */
+        function syncActiveReadingHighlightState() {
+            document.querySelectorAll('.reader-sentence').forEach((el, idx) => {
+                el.classList.toggle('is-current', idx === state.currentSegmentIndex);
+            });
+            
+            const currentElement = document.getElementById(`r-seg-${state.currentSegmentIndex}`);
+            if (currentElement) {
+                currentElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+        }
+
+        function highlightWordInsideActiveSentence(charIndex, length) {
+            const currentElement = document.getElementById(`r-seg-${state.currentSegmentIndex}`);
+            if (!currentElement) return;
+
+            const rawSentenceText = state.speechSegments[state.currentSegmentIndex].text;
+            if (charIndex + length > rawSentenceText.length) return;
+
+            const before = rawSentenceText.substring(0, charIndex);
+            const word = rawSentenceText.substring(charIndex, charIndex + length);
+            const after = rawSentenceText.substring(charIndex + length);
+
+            currentElement.innerHTML = '';
+            currentElement.appendChild(document.createTextNode(before));
+            
+            const wordSpan = document.createElement('span');
+            wordSpan.className = 'reader-word-highlight';
+            wordSpan.textContent = word;
+            
+            currentElement.appendChild(wordSpan);
+            currentElement.appendChild(document.createTextNode(after + " "));
+        }
+
+        function highlightWordIndexStandardMode(startIndex, length) {
+            const fullText = nodes.textInput.value;
+            if (startIndex + length > fullText.length) return;
+
+            nodes.highlightOverlay.innerHTML = '';
+            nodes.highlightOverlay.appendChild(document.createTextNode(fullText.substring(0, startIndex)));
+            const span = document.createElement('span');
+            span.className = 'highlight-word';
+            span.textContent = fullText.substring(startIndex, startIndex + length);
+            nodes.highlightOverlay.appendChild(span);
+            nodes.highlightOverlay.appendChild(document.createTextNode(fullText.substring(startIndex + length)));
+            
+            span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
+        /* --- Robust Control Actions Suite --- */
+        function pauseSpeechEngine() {
+            state.isPaused = true; nodes.body.classList.add('is-paused-state');
+            window.speechSynthesis.pause(); setPlayButtonState('resume');
+        }
+
+        function resumeSpeechEngine() {
+            state.isPaused = false; nodes.body.classList.remove('is-paused-state'); setPlayButtonState('pause');
+            window.speechSynthesis.resume();
+            setTimeout(() => {
+                if (state.isPlaying && !state.isPaused && !window.speechSynthesis.speaking) {
+                    window.speechSynthesis.cancel(); speakSegmentSequence();
+                }
+            }, 150);
+        }
+
+        function stopSpeech() {
+            window.speechSynthesis.cancel();
+            state.isPlaying = state.isPaused = false; state.currentSegmentIndex = 0;
+            nodes.body.classList.remove('is-playing', 'is-paused-state');
+            nodes.stopBtn.disabled = nodes.readerStopBtn.disabled = true;
+            setPlayButtonState('play');
+            
+            if (state.viewMode === 'reading') {
+                // Clear word span artifacts cleanly to restore text presentation
+                buildReaderDOMStructure(nodes.textInput.value);
+            } else {
+                nodes.highlightOverlay.innerHTML = '';
+            }
+        }
+
+        function setPlayButtonState(mode) {
+            nodes.allPlayBtnTexts.forEach(txtNode => {
+                const btn = txtNode.closest('button');
+                if (mode === 'pause') {
+                    txtNode.textContent = 'Pause'; btn.setAttribute('aria-label', 'Pause audio playback');
+                    btn.querySelector('svg').innerHTML = `<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>`;
+                } else if (mode === 'resume') {
+                    txtNode.textContent = 'Resume'; btn.setAttribute('aria-label', 'Resume audio playback');
+                    btn.querySelector('svg').innerHTML = `<polygon points="5 3 19 12 5 21 5 3"></polygon>`;
+                } else {
+                    txtNode.textContent = 'Speak It'; btn.setAttribute('aria-label', 'Start speaking text');
+                    btn.querySelector('svg').innerHTML = `<polygon points="5 3 19 12 5 21 5 3"></polygon>`;
+                }
+            });
+        }
+
+        /* --- Global Accelerator Key Triggers --- */
+        const togglePlaybackIntent = () => { !state.isPlaying ? executeSpeechPipeline() : state.isPaused ? resumeSpeechEngine() : pauseSpeechEngine(); };
+        nodes.playPauseBtn.addEventListener('click', togglePlaybackIntent);
+        nodes.readerPlayPauseBtn.addEventListener('click', togglePlaybackIntent);
+        nodes.stopBtn.addEventListener('click', stopSpeech);
+        nodes.readerStopBtn.addEventListener('click', stopSpeech);
+        nodes.textInput.addEventListener('scroll', () => { if (state.viewMode === 'standard') nodes.highlightOverlay.scrollTop = nodes.textInput.scrollTop; });
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement === nodes.textInput) return;
+            if (e.code === 'Space') { e.preventDefault(); togglePlaybackIntent(); }
+            if (e.code === 'Escape') { e.preventDefault(); stopSpeech(); }
+        });
+
+        initTheme(); loadSettingsAndText();
+    </script>
+</body>
+</html>
